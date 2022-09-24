@@ -1,0 +1,3 @@
+/solver-wasm/target
+/node_modules
+/public/build
