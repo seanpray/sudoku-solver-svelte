@@ -1,26 +1,21 @@
 use wasm_bindgen::prelude::wasm_bindgen;
 
-type Board = Vec<Vec<u8>>;
+type Board = [[u8; 9]; 9];
 
 #[inline]
-fn check_valid(data: &Board, row: Option<usize>, column: Option<usize>, target: u8) -> bool {
-    match (row, column) {
-        (Some(r), Some(c)) => {
-            check_row(data, r, target)
-                && check_column(data, c, target)
-                && check_square(data, (r, c), target)
-        }
-        (Some(r), None) => check_row(data, r, target),
-        (None, Some(c)) => check_column(data, c, target),
-        _ => false,
-    }
+fn check_valid(data: &Board, r: usize, c: usize, target: u8) -> bool {
+    check_row(data, r, target)
+        && check_column(data, c, target)
+        && check_square(data, (r, c), target)
 }
 
 #[inline]
 fn check_row(data: &Board, row: usize, target: u8) -> bool {
-    for num in &data[row] {
-        if num == &target {
-            return false;
+    unsafe {
+        for num in data.get_unchecked(row) {
+            if num == &target {
+                return false;
+            }
         }
     }
     true
@@ -29,8 +24,10 @@ fn check_row(data: &Board, row: usize, target: u8) -> bool {
 #[inline]
 fn check_column(data: &Board, column: usize, target: u8) -> bool {
     for row in data {
-        if row[column] == target {
-            return false;
+        unsafe {
+            if row.get_unchecked(column) == &target {
+                return false;
+            }
         }
     }
     true
@@ -39,10 +36,13 @@ fn check_column(data: &Board, column: usize, target: u8) -> bool {
 #[inline]
 fn check_square(data: &Board, pos: (usize, usize), target: u8) -> bool {
     let local_box = (pos.0 - pos.0 % 3, pos.1 - pos.1 % 3);
-    for r in 0..=2 {
-        for c in 0..=2 {
-            if data[local_box.0 + r][local_box.1 + c] == target {
-                return false;
+    for r in 0..3 {
+        for c in 0..3 {
+            let (r, c) = (local_box.0 + r, local_box.1 + c);
+            unsafe {
+                if data.get_unchecked(r).get_unchecked(c) == &target {
+                    return false;
+                }
             }
         }
     }
@@ -51,44 +51,36 @@ fn check_square(data: &Board, pos: (usize, usize), target: u8) -> bool {
 
 #[wasm_bindgen]
 pub fn solve(s: Vec<u8>) -> Vec<u8> {
-    let mut slices: Board = vec![];
-    let mut row = Vec::with_capacity(9);
+    let mut slices: Board = [[0; 9]; 9];
     for (index, item) in s.iter().enumerate() {
-        if index % 9 == 0 {
-            slices.push(row.clone());
-            row.clear();
+        unsafe {
+            *(*slices.get_unchecked_mut(index / 9)).get_unchecked_mut(index % 9) = *item;
         }
-        row.push(*item);
     }
-    slices.push(row.clone());
-    slices.remove(0);
     solve_b(&mut slices).0.iter().flatten().copied().collect()
 }
 
 #[inline]
-pub fn solve_b(s: &mut Vec<Vec<u8>>) -> (Vec<Vec<u8>>, bool) {
+pub fn solve_b(s: &mut Board) -> (&mut Board, bool) {
     for r in 0..s.len() {
         for c in 0..s[0].len() {
             if s[r][c] > 0 {
                 continue;
             }
             for i in 1..=s.len() {
-                if check_valid(
-                    s,
-                    Some(r),
-                    Some(c),
-                    i as u8,
-                ) {
+                if check_valid(s, r, c, i as u8) {
                     s[r][c] = i as u8;
-                    if let (s, true) = solve_b(s) {
-                        return (s.to_vec(), true);
+                    if let (_, true) = solve_b(s) {
+                        break;
                     } else {
                         s[r][c] = 0;
                     }
                 }
             }
+            if s[r][c] == 0 {
+                return (s, false);
+            }
         }
     }
-    (s.to_vec(), true)
+    return (s, true);
 }
-
